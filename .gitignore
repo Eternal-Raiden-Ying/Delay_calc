@@ -1,0 +1,13 @@
+# Ignore everything by default
+*
+
+# Keep the .gitignore itself
+!/.gitignore
+
+# Track only Tree directory contents
+!/Tree/
+!/Tree/**
+
+# Track root-level build config and docs
+!/CMakeLists.txt
+!/ReadMe

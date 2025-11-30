@@ -1,0 +1,40 @@
+***目录清单***：
+    /eigen-3.4.0：矩阵运算库
+    /Paser-SPEF：SPEF文件解析库
+    /Read_train：读取netlist_info.txt文件
+    /Tree：C++主程序源文件目录
+    CMakeLists.txt：Cmake生成makefile所需依赖文件
+
+***编译步骤***：
+linux:
+1.在当前文件夹下执行 mkdir build (如果已经存在，则无需新建)
+2.cd build
+3.cmake ..
+4.make
+5.观察到生成了可执行文件course 或者 parser_tset即可
+windows:
+使用cmake工具,如果后续更改了cmakelist.txt后请重新配置，更改代码只需要重新build（详见环境配置）
+
+***运行步骤（注意修改路径）***：
+在/DelayPredict/build/下执行(注意更改路径)：
+linux:
+./course --spef_num 0 --file_path "../Data" --feature_path "../features"
+win:
+course.exe --spef_num 0 --file_path "E:\Course\pathdelay\DelayPrediction\Data" --feature_path "E:\Course\pathdelay\DelayPrediction\features"
+    参数说明：
+    --spef_num：spef文件的编号
+    --file_path: 输入路径(提供Data文件夹路径即可)
+        /SPEF，netlist_info.txt所在文件夹位置
+        PS：要求SPEF文件放在 输入路径/SPEF/ 下，且名称为 Group(0-1).spef；
+        要求 netlist_info.txt 在 输入路径 下
+    --feature_path：输出路径
+        输出文件所在路径，输出的延时信息文件名为 delay(0-1).txt，分别对应 Group(0-1).spef
+        输出到文件的相关代码暂未编写，请同学们自行补充
+
+运行parser_test：
+在/DelayPredict/build/下执行：
+./parser_tset 或 parser_test.exe即可
+注意修改parser_test.cpp中指定的SPEF文件路径
+
+***其他注意事项***：
+1.编译器要求支持C++17
