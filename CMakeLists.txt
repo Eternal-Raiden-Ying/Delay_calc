@@ -20,7 +20,7 @@ set(CMAKE_BUILD_TYPE Debug)
 # find_package(OpenMP)
 
 set(CMAKE_CXX_FLAGS "-g -std=c++17 -lstdc++fs ${CMAKE_CXX_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS"${CMAKE_EXE_LINKER_FLAGS}")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 
 # 设置全局include目录（使用绝对路径）
 include_directories(${PROJECT_SOURCE_DIR})
@@ -33,7 +33,14 @@ include_directories(${PROJECT_SOURCE_DIR}/Read_train)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build)
 
 # 不需要的注释掉
-add_executable(course Tree/course.cpp Read_train/Read.cpp)
+add_executable(course
+    Tree/course.cpp
+    Read_train/Read.cpp
+    Tree/src/build_tree.cpp       # <-- new: RC tree module
+    Tree/src/calc_delay.cpp       # <-- add Elmore delay module
+    Tree/src/analysis.cpp        # <-- new: analysis/statistics module
+    Tree/src/io.cpp              # <-- new: IO helper module
+)
 target_link_libraries(course stdc++fs)
 
 add_executable(parser_test Tree/parser_test.cpp)
