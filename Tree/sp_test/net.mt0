@@ -1,0 +1,8 @@
+$DATA1 SOURCE='HSPICE' VERSION='C-2009.09 32-BIT'
+.TITLE 'net'
+ vmax_in1         vmin_in1         vmax_in2         vmin_in2          
+ td_2731070_b_lh  td_2730719_i_lh  td_2731070_b_hl  td_2730719_i_hl   
+ temper           alter#            
+    1.0000        -1.035e-06          1.0000        -1.315e-06        
+  1.640e-10        2.465e-11        1.640e-10        2.465e-11        
+   27.0000           1.0000         

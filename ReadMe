@@ -38,3 +38,17 @@ course.exe --spef_num 0 --file_path "E:\Course\pathdelay\DelayPrediction\Data" -
 
 ***其他注意事项***：
 1.编译器要求支持C++17
+
+
+***文件说明***  
+Tree下为主要代码文件：
+    course.cpp 主程序
+    inc
+    src
+    resc: rescource, 训练的参数
+
+py为相关python脚本文件
+    data_analysis.py: 结合Gephi可视化
+    utils: 辅助data_analysis.py使用
+    train.py: 训练延时预测模型
+    anallyze_log.py 分析结果

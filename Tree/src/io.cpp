@@ -1,5 +1,10 @@
 #include "Tree/inc/io.h"
 #include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <tuple>
+#include <unordered_map>
+#include <vector>
 
 using namespace std;
 
@@ -34,4 +39,192 @@ int load_spef(const std::string &base_path, int spef_num, spef::Spef &parser)
         return 1;
     }
     return 0;
+}
+
+stringstream& write2log(stringstream &ss, const std::vector<std::pair<std::string, double>> &res, 
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const spef::Net &net, int precision)
+{
+    unordered_map<string, double> res_map;
+    for (auto &t : res) {
+        res_map[t.first] = t.second;
+    }
+
+    // 输出日志
+    ss << "[Compare Net: " << net.name << "]" << endl;
+    ss << "Name | Golden(ps) | Calc(ps) | Error | Type" << endl;
+    ss.setf(std::ios::fixed);
+    ss.precision(precision);
+
+    for (const auto &inp : Input) {
+        const string &inp_name = get<0>(inp);
+        const auto &info = get<1>(inp);
+        double std_ps = info.delay * 1000.0; 
+        
+        auto it = res_map.find(inp_name);
+        if (it != res_map.end()) {
+            double calc_ps = it->second;
+            double final_error = 0.0;
+            string err_type = "";
+
+            if (std_ps < 50.0) {
+                final_error = std::abs(calc_ps - std_ps);
+                err_type = "Abs(ps)";
+            } else {
+                if (std_ps != 0.0) final_error = std::abs((calc_ps - std_ps) / std_ps);
+                err_type = "Rel(%)";
+            }
+            
+            ss << inp_name << " | " 
+                << std_ps << " | " 
+                << calc_ps << " | " 
+                << final_error << " | " 
+                << err_type << endl;
+        } else {
+            ss << inp_name << " | " << std_ps << " | " << "N/A" << " | N/A | N/A | Missing" << endl;
+        }
+    }
+    ss.unsetf(std::ios::fixed);
+    return ss;
+}
+
+stringstream& write2log(stringstream &ss, const std::vector<std::tuple<std::string, double, double>> &res, 
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const spef::Net &net, int precision)
+{
+    unordered_map<string, pair<double,double>> res_map;
+    for (auto &t : res) {
+        res_map[get<0>(t)] = {get<1>(t), get<2>(t)};
+    }
+
+    // 输出日志
+    ss << "[Compare Net: " << net.name << "]" << endl;
+    ss << "Name | Golden(ps) | Calc_Advanced(ps) | Calc_Base(ps) | Error | Type" << endl;
+    ss.setf(std::ios::fixed);
+    ss.precision(precision);
+
+    for (const auto &inp : Input) {
+        const string &inp_name = get<0>(inp);
+        const auto &info = get<1>(inp);
+        double std_ps = info.delay * 1000.0; 
+        
+        auto it = res_map.find(inp_name);
+        if (it != res_map.end()) {
+            double calc_ps = it->second.first;  // 修正后 (ML Final)
+            double calc_before = it->second.second; // 修正前 (Raw Elmore)
+            
+            double final_error = 0.0;
+            string err_type = "";
+
+            if (std_ps < 50.0) {
+                final_error = std::abs(calc_ps - std_ps);
+                err_type = "Abs(ps)";
+            } else {
+                if (std_ps != 0.0) final_error = std::abs((calc_ps - std_ps) / std_ps);
+                err_type = "Rel(%)";
+            }
+            
+            ss << inp_name << " | " 
+                << std_ps << " | " 
+                << calc_ps << " | " 
+                << calc_before << " | " 
+                << final_error << " | " 
+                << err_type << endl;
+        } else {
+            ss << inp_name << " | " << std_ps << " | " << "N/A" << " | N/A | N/A | Missing" << endl;
+        }
+    }
+    ss.unsetf(std::ios::fixed);
+    return ss;
+}
+
+stringstream& write_delay(stringstream &ss, const std::vector<std::pair<std::string, double>> &res, 
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const string &out_real_name, int precision){
+    
+    ss.setf(std::ios::fixed);
+    ss.precision(precision);
+    for (auto& inp: Input){
+        const string &inp_name = get<0>(inp);
+        const auto &info = get<1>(inp);
+        double calc_ps = 0.0;
+        auto it = find_if(res.begin(), res.end(), [&](const pair<string,double> &p){
+            return p.first == inp_name;
+        });
+        if (it != res.end()){
+            calc_ps = it->second;
+        }
+        ss << out_real_name << " " << info.name << " " <<  calc_ps << endl;
+    }
+    ss.unsetf(std::ios::fixed);
+    return ss;
+}
+
+stringstream& write_delay(stringstream &ss, const std::vector<std::tuple<std::string, double, double>> &res, 
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const string &out_real_name, int precision){
+
+    ss.setf(std::ios::fixed);
+    ss.precision(precision);
+    for (auto& inp: Input){
+        const string &inp_name = get<0>(inp);
+        const auto &info = get<1>(inp);
+        double calc_ps = 0.0;
+        auto it = find_if(res.begin(), res.end(), [&](const tuple<string,double, double> &p){
+            return get<0>(p) == inp_name;
+        });
+        if (it != res.end()){
+            calc_ps = get<1>(*it);
+        }
+        ss << out_real_name << " " << info.name << " " <<  calc_ps << endl;
+    }
+    ss.unsetf(std::ios::fixed);
+    return ss;
+}
+
+
+// 导出 Elmore 与标准延时对比结果到 CSV
+void ExportDelayComparisonCsv(
+    const std::string &csv_path,
+    const std::string &net_name,
+    const std::vector<std::tuple<std::string, Input_info>> &inputs,
+    const std::unordered_map<std::string, double> &elmore_map,
+    bool with_header
+)
+{
+    // 第一次写（with_header=true）用截断模式，后续用追加模式
+    std::ios::openmode mode = std::ios::out | (with_header ? std::ios::trunc : std::ios::app);
+    std::ofstream csv(csv_path, mode);
+    if (!csv.is_open()) {
+        std::cerr << "Failed to open CSV for delay comparison: " << csv_path << std::endl;
+        return;
+    }
+
+    if (with_header) {
+        csv << "net_name,input_id,input_real_name,std_ps,calc_ps,rel_err\n";
+    }
+
+    csv.setf(std::ios::fixed);
+    csv << std::setprecision(6);
+
+    for (const auto &inp : inputs) {
+        const std::string &inp_name = std::get<0>(inp);   // spef input ID，如 *12345:A
+        const auto &info = std::get<1>(inp);              // Input_info，含真实 pin 名称等
+        double std_ps = info.delay * 1000.0;              // ns -> ps
+
+        auto it = elmore_map.find(inp_name);
+        if (it != elmore_map.end()) {
+            double calc_ps = it->second;
+            double rel_err = (std_ps != 0.0) ? ((calc_ps - std_ps) / std_ps) : 0.0;
+            csv << net_name << ','
+                << inp_name << ','
+                << info.name << ','   // Input_info 中的真实 pin 名
+                << std_ps << ','
+                << calc_ps << ','
+                << rel_err << '\n';
+        } else {
+            csv << net_name << ','
+                << inp_name << ','
+                << info.name << ','
+                << std_ps << ",,,\n";
+        }
+    }
+
+    csv.unsetf(std::ios::fixed);
 }

@@ -17,3 +17,24 @@ int load_netlist_and_delay(const std::string &base_path, int spef_num);
 
 // 读取 SPEF 到 parser 中，返回非 0 表示失败
 int load_spef(const std::string &base_path, int spef_num, spef::Spef &parser);
+
+stringstream& write2log(stringstream &ss, const std::vector<std::pair<std::string, double>> &res, 
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const spef::Net &net, int precision=4);
+
+stringstream& write2log(stringstream &ss, const std::vector<std::tuple<std::string, double, double>> &res, 
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const spef::Net &net, int precision=4);
+
+stringstream& write_delay(stringstream &ss, const std::vector<std::pair<std::string, double>> &res, 
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const string &out_real_name, int precision=4);
+
+stringstream& write_delay(stringstream &ss, const std::vector<std::tuple<std::string, double, double>> &res, 
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const string &out_real_name, int precision=4);
+
+// 导出 Elmore 与标准延时对比结果到 CSV
+void ExportDelayComparisonCsv(
+    const std::string &csv_path,
+    const std::string &net_name,
+    const std::vector<std::tuple<std::string, Input_info>> &inputs,
+    const std::unordered_map<std::string, double> &elmore_map,
+    bool with_header = false
+);

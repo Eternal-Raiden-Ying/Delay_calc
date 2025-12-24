@@ -206,7 +206,7 @@ void DebugElmoreSinglePath(
     vector<double> node_total_cap(topo.nodes.size(),0.0);
     for (size_t i=0;i<topo.nodes.size();++i){
         double load = 0.0; auto it=sink_load_cap.find((int)i); if(it!=sink_load_cap.end()) load=it->second;
-        node_total_cap[i] = topo.nodes[i].cap_downstream + topo.nodes[i].ground_cap + load;
+        node_total_cap[i] = topo.nodes[i].ground_cap + load;
     }
     vector<double> subtree_cap(topo.nodes.size(),0.0);
     for (int i=(int)order.size()-1;i>=0;--i){
@@ -215,11 +215,10 @@ void DebugElmoreSinglePath(
         subtree_cap[u]=sum;
     }
 
-    cout << "[DebugElmore] Node list (index | name | cap_fF | ground_fF | load_fF | subtree_fF)" << endl;
+    cout << "[DebugElmore] Node list (index | name | ground_fF | load_fF | subtree_fF)" << endl;
     for (int idx : path) {
         double load = sink_load_cap.count(idx)? sink_load_cap[idx]:0.0;
         cout << idx << " | " << (idx_to_name.count(idx)?idx_to_name[idx]:"<unnamed>")
-             << " | " << topo.nodes[idx].cap_downstream
              << " | " << topo.nodes[idx].ground_cap
              << " | " << load
              << " | " << subtree_cap[idx]
@@ -261,7 +260,7 @@ void ExportNetToGephiCsv(
         idx_to_name[kv.second] = kv.first;
     }
 
-    // 2. 输出 / 输入 节点的索引集合
+    // 2. 输出 / 输入 节点的索引集合 + input pin cap
     int out_idx = -1;
     auto it_out = topo.name_to_idx.find(out_name);
     if (it_out != topo.name_to_idx.end()) {
@@ -270,11 +269,15 @@ void ExportNetToGephiCsv(
 
     std::unordered_set<int> input_indices;
     input_indices.reserve(Input.size());
+    std::unordered_map<int, double> input_pin_caps;
+    input_pin_caps.reserve(Input.size());
     for (const auto &inp : Input) {
         const std::string &spef_name = std::get<0>(inp); // connection.name
         auto it = topo.name_to_idx.find(spef_name);
         if (it != topo.name_to_idx.end()) {
-            input_indices.insert(it->second);
+            int idx = it->second;
+            input_indices.insert(idx);
+            input_pin_caps[idx] = std::get<1>(inp).pin_cap; // 记录 pin cap
         }
     }
 
@@ -284,7 +287,7 @@ void ExportNetToGephiCsv(
         if (!ofs.is_open()) {
             std::cerr << "[GephiExport] Failed to open nodes csv: " << nodes_csv_path << std::endl;
         } else {
-            ofs << "id,label,is_output,is_input,degree,ground_cap,resistor\n";
+            ofs << "id,label,is_output,is_input,degree,ground_cap,subtree_cap,elmore_delay,pin_cap,voltage\n";
             for (size_t i = 0; i < topo.nodes.size(); ++i) {
                 const Node_Info &n = topo.nodes[i];
                 std::string label;
@@ -299,20 +302,29 @@ void ExportNetToGephiCsv(
                 bool is_in = (input_indices.find(static_cast<int>(i)) != input_indices.end());
                 size_t degree = n.neighbors.size();
 
+                double pin_cap = 0.0;
+                auto it_cap = input_pin_caps.find(static_cast<int>(i));
+                if (it_cap != input_pin_caps.end()) {
+                    pin_cap = it_cap->second;
+                }
+
                 ofs << i << ", "
                     << "\"" << label << "\"" << ", "
                     << (is_out ? 1 : 0) << ", "
                     << (is_in ? 1 : 0) << ", "
                     << degree << ", "
                     << n.ground_cap << ", "
-                    << n.resistor
+                    << n.subtree_cap << ", "
+                    << n.elmore_delay << ", "
+                    << pin_cap << ","
+                    << n.voltage
                     << "\n";
             }
             std::cout << "[GephiExport] Nodes written to " << nodes_csv_path << std::endl;
         }
     }
 
-    // 4. 构建带权无向邻接表（基于 net.ress），然后从 out_idx 做 DFS，导出有向树边
+    // 4. 构建带权无向邻接表 + DFS 导出 edges.csv
     {
         if (out_idx == -1) {
             std::cerr << "[GephiExport] Cannot find out_name in topology: " << out_name

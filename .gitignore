@@ -11,3 +11,8 @@
 # Track root-level build config and docs
 !/CMakeLists.txt
 !/ReadMe
+
+!py/
+!py/**.py
+!py/utils/
+!py/utils/**.py
