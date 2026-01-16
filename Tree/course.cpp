@@ -1,4 +1,4 @@
-#define __DEVELOP__                 // develop version, embed path parameters into code
+// #define __DEVELOP__                 // develop version, embed path parameters into code
 
 #define CFG_FEATURE_MODE  34
 // 2. 拟合模式: 1 (Ratio: kx), 2 (Delta: x+b), 3 (Linear: kx+b)
@@ -27,6 +27,7 @@
 #include <tuple>  
 #include <chrono> 
 #include <filesystem>
+#include <atomic>
 #include "Tree/inc/build_tree.h"
 #include "Tree/inc/calc_delay.h"
 #include "Tree/inc/analysis.h"
@@ -134,6 +135,9 @@ int main(int argc, char **argv)
         std::cerr << "Failed to open output file: " << output_filename << std::endl;
         return 1;
     }
+    // 放大输出缓冲，减少频繁写盘
+    std::vector<char> fout_buf(1 << 20); // 1MB
+    fout.rdbuf()->pubsetbuf(fout_buf.data(), static_cast<std::streamsize>(fout_buf.size()));
 
     std::ofstream log_file;
     std::ostream *log = &std::cout;
@@ -168,6 +172,8 @@ int main(int argc, char **argv)
         std::cout << "Logging enabled, write to " << log_name << std::endl;
 
         log_file.open(log_name, std::ios::out | std::ios::trunc);
+        std::vector<char> log_buf_file(512 << 10); // 512KB
+        log_file.rdbuf()->pubsetbuf(log_buf_file.data(), static_cast<std::streamsize>(log_buf_file.size()));
         
         if (log_file.is_open()) {
             log = &log_file;
@@ -188,6 +194,8 @@ int main(int argc, char **argv)
         std::cout << "Analyze enabled, write to " << analyze_file_name << std::endl;
 
         analyze_file.open(analyze_file_name, std::ios::out | std::ios::trunc);
+        std::vector<char> analyze_buf_file(512 << 10); // 512KB
+        analyze_file.rdbuf()->pubsetbuf(analyze_buf_file.data(), static_cast<std::streamsize>(analyze_buf_file.size()));
         
         if (analyze_file.is_open()) {
             analyze_log = &analyze_file;
@@ -204,31 +212,23 @@ int main(int argc, char **argv)
     using steady_clock = std::chrono::steady_clock;
     auto t_load_start = steady_clock::now();
 
-    // =========================================================================
-    // 优化：并行读取 netlist_info 和 SPEF 文件
-    // 性能提升：20-40%（两个 IO 操作可以并行进行）
-    // =========================================================================
     spef::Spef parser;
-    std::future<int> netlist_result;
-    std::future<int> spef_result;
     
-    // 并行启动两个异步任务
-    netlist_result = std::async(std::launch::async, [&file_path, &spef_num]() {
-        return load_netlist_and_delay(file_path, spef_num);
-    });
-    
-    spef_result = std::async(std::launch::async, [&file_path, &spef_num, &parser]() {
+    // 异步启动 SPEF 读取（耗时最长）
+    auto spef_future = std::async(std::launch::async, [&file_path, &spef_num, &parser]() {
         return load_spef(file_path, spef_num, parser);
     });
     
-    // 等待两个任务完成并检查错误
-    int netlist_status = netlist_result.get();
-    int spef_status = spef_result.get();
+    // 主线程读取 netlist
+    int netlist_status = load_netlist_and_delay(file_path, spef_num);
     
     if (netlist_status != 0) {
         std::cerr << "[ERROR] Failed to load netlist and delay files" << std::endl;
         exit(1);
     }
+    
+    // 等待 SPEF 读取完成
+    int spef_status = spef_future.get();
     
     if (spef_status != 0) {
         std::cerr << "[ERROR] Failed to load SPEF file" << std::endl;
@@ -240,8 +240,14 @@ int main(int argc, char **argv)
     std::cout << "[TIME] load phase: " << load_ms << " ms" << std::endl;
     // === load 部分计时结束 ===
 
-    // === for 循环整体计算部分计时开始 ===
+    // === compute 部分计时开始 ===
     auto t_compute_start = steady_clock::now();
+    int omp_max_threads = omp_get_max_threads();
+
+    // 线程本地缓冲，避免在循环中加锁写文件
+    std::vector<std::string> out_buf(omp_max_threads);
+    std::vector<std::string> analyze_buf(omp_max_threads);
+    std::vector<std::string> log_buf(omp_max_threads);
     string target_net_name = "*1540529";
     /* 一个SPEF文件含有多个net，针对每一个net做处理 */
     #pragma omp parallel for schedule(dynamic)
@@ -297,14 +303,12 @@ int main(int argc, char **argv)
         }
         
         Topology topo = BuildTopologyFromRess(net, out_name, Input);
-
         FillCapsFromNet(net, topo, out_name, Input);
 
         // 单位设定：caps 为 fF、res 为 ohm，输出 ps。e3
         // ohm * fF -> seconds: 1e-15；转成 ps 乘以 1e12 => 综合因子 1e-3。
         double pin_load_unit_factor = 1e3;    // 若 Input.pin_cap 单位与 caps 不同，可在此调整为把其换算到 fF
         double cap_ff_to_ps_factor = 1e-3;    // R(ohm)*C(fF) 转 ps 的系数
-        // auto base_res = ComputeElmoreDelays(net, out_name, Input, topo, pin_load_unit_factor, cap_ff_to_ps_factor);
         auto base_res = ComputeElmoreDelays_advanced(net, out_name, Input, topo, pin_load_unit_factor, cap_ff_to_ps_factor);
 
         // Interface: choose whether to apply ML correction.
@@ -344,12 +348,11 @@ int main(int argc, char **argv)
             write_delay(sout, base_res, Input, OUT_REAL_NAME, 4);
         }
 
-        #pragma omp critical 
-        {
-            fout << sout.str();
-            if (analyze_enabled) (*analyze_log) << s_analyze.str();
-            if (logging_enabled) (*log) << ss.str();
-        }
+        // 缓存到线程本地字符串，减少热点锁竞争
+        const int tid = omp_get_thread_num();
+        out_buf[tid] += sout.str();
+        if (analyze_enabled) analyze_buf[tid] += s_analyze.str();
+        if (logging_enabled) log_buf[tid] += ss.str();
 
         // 导出后可以使用Gephi可视化RC树结构
         // if(net.name == target_net_name){
@@ -359,8 +362,16 @@ int main(int argc, char **argv)
     }
 
     auto t_compute_end = steady_clock::now();
+
+    // 串行 flush 文件
+    for (int i = 0; i < omp_max_threads; ++i) {
+        if (!out_buf[i].empty()) fout << out_buf[i];
+        if (analyze_enabled && !analyze_buf[i].empty()) (*analyze_log) << analyze_buf[i];
+        if (logging_enabled && !log_buf[i].empty()) (*log) << log_buf[i];
+    }
+    
     auto compute_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_compute_end - t_compute_start).count();
-    std::cout << "[TIME] compute phase (for nets loop): " << compute_ms << " ms" << std::endl;
+    std::cout << "[TIME] compute phase: " << compute_ms << " ms" << std::endl;
 
     /* 释放内存 */
     if (file_path)

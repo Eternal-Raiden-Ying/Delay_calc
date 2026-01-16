@@ -3,6 +3,7 @@
 
 # Keep the .gitignore itself
 !/.gitignore
+!/.gitattributes
 
 # Track only Tree directory contents
 !/Tree/
@@ -20,3 +21,13 @@
 !py/**.py
 !py/utils/
 !py/utils/**.py
+
+
+!/Read_train/
+!/Read_train/**
+!/Parser-SPEF/
+!/Parser-SPEF/parser-spef/
+!/Parser-SPEF/parser-spef/**
+
+!/dev
+!/dev/**

@@ -54,7 +54,7 @@ int MapNodeNameToIndex(const string &name,
         }
     }
     int idx = stoi(pin_part);
-    cache[name] = idx;  // if it will be faster without this, TODO: test it
+    // cache[name] = idx;  // if it will be faster without this, TODO: test it   RES: build topo & calc faster but fill cap slower
     return idx;
 }
 
