@@ -15,7 +15,7 @@
 
 # Track root-level build config and docs
 !/CMakeLists.txt
-!/ReadMe
+!/Readme.md
 
 !py/
 !py/**.py

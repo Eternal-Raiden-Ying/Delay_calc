@@ -36,7 +36,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DNDEBUG" CACHE STRING "Custom Release Flags" F
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/Parser-SPEF/parser-spef)
 include_directories(${PROJECT_SOURCE_DIR}/Parser-SPEF)  # 添加这行以支持pegtl的相对路径包含
-# include_directories(${PROJECT_SOURCE_DIR}/eigen-3.4.0)
 include_directories(${PROJECT_SOURCE_DIR}/Tree)
 include_directories(${PROJECT_SOURCE_DIR}/Read_train)
 include_directories(${PROJECT_SOURCE_DIR}/Tree/resc)
