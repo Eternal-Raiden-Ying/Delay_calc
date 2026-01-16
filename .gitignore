@@ -9,6 +9,10 @@
 !/Tree/
 !/Tree/inc/
 !/Tree/inc/**.h
+!/Tree/resc/
+!/Tree/resc/**.h
+!/Tree/sp_test/
+!/Tree/sp_test/**.sp
 !/Tree/src/
 !/Tree/src/**.cpp
 !/Tree/*.cpp
