@@ -29,21 +29,20 @@ with open(self_path, 'r') as file:
         g = float(goldens[lines[0] + lines[1]]) * 1000
         golden_list.append(g)
         if g > 50:
-            test_larger50_error.append(100 * abs(g - s) / g)
+            test_larger50_error.append(100 * (g - s) / g)
             if (100 * abs(g - s) / g)>1e10:
                 print('here')
         else:
-            test_smaller50_error.append(abs(g - s))
+            test_smaller50_error.append((g - s))
 
 golden_np= np.asarray(golden_list)
-test_smaller50_error = np.array(test_smaller50_error)
-test_larger50_error = np.array(test_larger50_error)
+test_smaller50_error = np.array(np.abs(test_smaller50_error))
+test_larger50_error = np.array(np.abs(test_larger50_error))
 print("**************TEST***************")
-
-print("test_smaller50_mean:", np.mean(abs(test_smaller50_error)))
-print("test_smaller50_max:", np.max(abs(test_smaller50_error)))
+print("test_smaller50_mean:", np.mean(np.abs(test_smaller50_error)))
+print("test_smaller50_max:", np.max(np.abs(test_smaller50_error)))
 print("test_smaller50_2sigma:", 2*np.var(test_smaller50_error)**0.5)
 
-print("test_larger50_mean:", np.mean(abs(test_larger50_error)))
-print("test_larger50_max:", np.max(abs(test_larger50_error)))
+print("test_larger50_mean:", np.mean(np.abs(test_larger50_error)))
+print("test_larger50_max:", np.max(np.abs(test_larger50_error)))
 print("test_larger50_2sigma:", 2*np.var(test_larger50_error)**0.5)

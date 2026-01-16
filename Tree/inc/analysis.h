@@ -36,3 +36,6 @@ void ExportNetToGephiCsv(
     const Topology &topo,
     const std::string &nodes_csv_path,
     const std::string &edges_csv_path);
+
+stringstream& write2csv(stringstream &ss, const std::vector<std::pair<std::string, double>> &res, const Topology &topo,
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const spef::Net &net, int precision=4);

@@ -22,10 +22,8 @@ struct Node_Info {
     double m2 = 0.0;
 
     double voltage = 0.0;
-    double dv_dt = 0.0;
     double eff_subtree_cap = 0.0; 
     double elmore_delay_new = 0.0;
-    double current = 0.0; //parent->self current
 
     Node_Info() {
         neighbors.reserve(2);

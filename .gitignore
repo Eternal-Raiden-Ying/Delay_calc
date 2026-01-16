@@ -6,7 +6,11 @@
 
 # Track only Tree directory contents
 !/Tree/
-!/Tree/**
+!/Tree/inc/
+!/Tree/inc/**.h
+!/Tree/src/
+!/Tree/src/**.cpp
+!/Tree/*.cpp
 
 # Track root-level build config and docs
 !/CMakeLists.txt

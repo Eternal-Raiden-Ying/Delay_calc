@@ -52,13 +52,12 @@ add_executable(course
     Tree/src/analysis.cpp        # <-- new: analysis/statistics module
     Tree/src/io.cpp              # <-- new: IO helper module
 )
-target_link_libraries(course PRIVATE stdc++fs)
-# if(OpenMP_CXX_FOUND)
-#     # 链接 OpenMP::OpenMP_CXX 会自动处理编译标志(-fopenmp)和链接库
-#     target_link_libraries(course PRIVATE stdc++fs OpenMP::OpenMP_CXX)
-# else()
-#     target_link_libraries(course PRIVATE stdc++fs)
-# endif()
+if(OpenMP_CXX_FOUND)
+    # 链接 OpenMP::OpenMP_CXX 会自动处理编译标志(-fopenmp)和链接库
+    target_link_libraries(course PRIVATE stdc++fs OpenMP::OpenMP_CXX)
+else()
+    target_link_libraries(course PRIVATE stdc++fs)
+endif()
 
 
 add_executable(parser_test Tree/parser_test.cpp)

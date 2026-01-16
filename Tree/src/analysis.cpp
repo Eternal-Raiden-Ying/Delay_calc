@@ -8,6 +8,29 @@
 
 using namespace std;
 
+double lenth_ratio(const Topology &topo, int pin_idx) {
+    int cur_nd_idx = pin_idx;
+    int pin_len = 0;
+    int max_len = 0;
+    while(true){
+        if (topo.nodes[cur_nd_idx].parent_idx == -1) break;
+        pin_len += 1;
+        cur_nd_idx = topo.nodes[cur_nd_idx].parent_idx;
+    }
+
+    for (auto& [leaf_idx, visited]: topo.leaf_node_idx){
+        int temp = 0;
+        cur_nd_idx = leaf_idx;
+        while(true){
+            if(topo.nodes[cur_nd_idx].parent_idx == -1) break;
+            temp +=1;
+            cur_nd_idx = topo.nodes[cur_nd_idx].parent_idx;
+        }
+        max_len = max(max_len, temp);
+    }
+    return (double)pin_len / (double)max_len;
+}
+
 void print_connections_length_stats(const spef::Spef &p)
 {
     unordered_map<size_t, size_t> length_counts;
@@ -377,4 +400,39 @@ void ExportNetToGephiCsv(
                       << edges_csv_path << std::endl;
         }
     }
+}
+
+stringstream& write2csv(stringstream &ss, const std::vector<std::pair<std::string, double>> &res, const Topology &topo,
+    const std::vector<std::tuple<std::string, Input_info>> &Input, const spef::Net &net, int precision)
+{
+    unordered_map<string, double> res_map;
+    for (auto &t : res) {
+        res_map[t.first] = t.second;
+    }
+
+    // 输出 CSV 格式
+    ss.setf(std::ios::fixed);
+    ss.precision(precision);
+
+    for (const auto &inp : Input) {
+        const string &inp_name = get<0>(inp);
+        const auto &info = get<1>(inp);
+        double std_ps = info.delay * 1000.0; 
+        
+        auto it = res_map.find(inp_name);
+        if (it != res_map.end()) {
+            double calc_ps = it->second;
+            double abs_error = std_ps - calc_ps;
+            double rel_error = (std_ps != 0.0) ? (abs_error / std_ps) : 0.0;
+            ss << inp_name << ","
+               << std_ps << ","
+               << calc_ps << ","
+               << abs_error << ","
+               << rel_error << ","
+               << lenth_ratio(topo, topo.name_to_idx.at(inp_name)) << ","
+               << Input.size() << "\n";
+        }
+    }
+    ss.unsetf(std::ios::fixed);
+    return ss;
 }
