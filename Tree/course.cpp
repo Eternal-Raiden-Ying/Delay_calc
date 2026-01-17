@@ -9,7 +9,7 @@
 #include <getopt.h>
 #include <iostream>
 #include <unordered_map>
-#include <parser-spef.hpp>
+#include <parser-spef.hpp> 
 #include <list>
 #include <string>
 #include <cstring>
@@ -33,6 +33,8 @@
 #include "Tree/inc/analysis.h"
 #include "Tree/inc/io.h"
 
+// 必须包含 string_view
+#include <string_view>
 
 #ifdef __DEVELOP__
 bool default_logging_enabled = false;
@@ -62,7 +64,7 @@ int main(int argc, char **argv)
     int spef_num;
     char *file_path = nullptr;
     char *feature_path = nullptr;
-    bool use_ml = false; // default: output advanced Elmore only; enable with --use_ml
+    bool use_ml = false; 
     bool logging_enabled = false;
     bool analyze_enabled = false;
     int option_index = 0;
@@ -70,8 +72,8 @@ int main(int argc, char **argv)
         {"file_path",       required_argument, 0, 'f'},
         {"spef_num",        required_argument, 0, 'm'},
         {"feature_path",    required_argument, 0, 't'},
-        {"use_ml",          no_argument,       0, 'u'},  // enable ML, output ML-fixed delay
-        {"no_ml",           no_argument,       0, 'U'},  // disable ML, output advanced Elmore
+        {"use_ml",          no_argument,       0, 'u'}, 
+        {"no_ml",           no_argument,       0, 'U'}, 
         {0, 0, 0, 0}
     };
 
@@ -142,31 +144,18 @@ int main(int argc, char **argv)
     std::ofstream log_file;
     std::ostream *log = &std::cout;
     if (logging_enabled) {
-        // =========================================================================
-        // 动态生成日志文件名
-        // 格式: fitmode_splitmode_featuremode_groupid.log
-        // 例如: ratio_true_34_0.log
-        // =========================================================================
         string fit_str = "unknown";
         int config_fit_mode = CFG_FIT_MODE;
         switch(config_fit_mode) {
-            case MODE_RATIO:
-                fit_str = "ratio";
-                break;
-            case MODE_DELTA:
-                fit_str = "delta";
-                break;
-            case MODE_LINEAR:
-                fit_str = "linear";
-                break;
-            default:
-                fit_str = "unknown";
-                break;
+            case MODE_RATIO: fit_str = "ratio"; break;
+            case MODE_DELTA: fit_str = "delta"; break;
+            case MODE_LINEAR: fit_str = "linear"; break;
+            default: fit_str = "unknown"; break;
         }
 
         string split_str = (CFG_SPLIT_MODE == 1) ? "true" : "false";
         string feat_str = to_string(CFG_FEATURE_MODE);
-        string group_str = to_string(spef_num); // 使用解析后的 spef_num
+        string group_str = to_string(spef_num);
 
         string log_name = fit_str + "_" + split_str + "_" + feat_str + "_" + group_str + ".log";
         std::cout << "Logging enabled, write to " << log_name << std::endl;
@@ -177,7 +166,6 @@ int main(int argc, char **argv)
         
         if (log_file.is_open()) {
             log = &log_file;
-            // 在日志开头打印配置信息，方便核对
             (*log) << "[Config] Log File: " << log_name << endl;
             (*log) << "[Config] Feature: " << feat_str << ", Split: " << split_str << ", Fit: " << fit_str << endl;
         } else {
@@ -199,7 +187,6 @@ int main(int argc, char **argv)
         
         if (analyze_file.is_open()) {
             analyze_log = &analyze_file;
-            // 在日志开头打印配置信息，方便核对
             (*analyze_log) << "Name,Golden(ps),Calc(ps),AbsError,RelError,LengthRatio,input_pin_num\n";
         } else {
             std::cerr << "无法打开日志文件: " << analyze_file_name << std::endl;
@@ -214,7 +201,7 @@ int main(int argc, char **argv)
 
     spef::Spef parser;
     
-    // 异步启动 SPEF 读取（耗时最长）
+    // 异步启动 SPEF 读取
     auto spef_future = std::async(std::launch::async, [&file_path, &spef_num, &parser]() {
         return load_spef(file_path, spef_num, parser);
     });
@@ -223,7 +210,7 @@ int main(int argc, char **argv)
     int netlist_status = load_netlist_and_delay(file_path, spef_num);
     
     if (netlist_status != 0) {
-        std::cerr << "[ERROR] Failed to load netlist files" << std::endl;
+        std::cerr << "[ERROR] Failed to load netlist and delay files" << std::endl;
         exit(1);
     }
     
@@ -244,121 +231,164 @@ int main(int argc, char **argv)
     auto t_compute_start = steady_clock::now();
     int omp_max_threads = omp_get_max_threads();
 
-    // 线程本地缓冲，避免在循环中加锁写文件
+    // 线程本地缓冲
     std::vector<std::string> out_buf(omp_max_threads);
     std::vector<std::string> analyze_buf(omp_max_threads);
     std::vector<std::string> log_buf(omp_max_threads);
-    string target_net_name = "*1540529";
-    /* 一个SPEF文件含有多个net，针对每一个net做处理 */
+    
+    // 使用索引循环，方便引用和错误报告
     #pragma omp parallel for schedule(dynamic)
-    for (auto &net : parser.nets)
+    for (size_t i = 0; i < parser.nets.size(); ++i)
     {
-        /* 一个net只有一个output，有多个input */
-        string out_name;            // spef文件中output的名字，是一个ID，例如 *1681713:Q，用于建立net的数据结构
-        string OUT_REAL_NAME;       // 最后用来写入文件真实的名字 CNU17/R4_reg_18_
-        /* 一条path包含多个从output->input的路径，也就是一个net包含多条path */
-        /* Input变量第一个string元素是一个input pin的 ID */
-        /* Input_info记录了这个input的real name和引脚电容、以及以这个input结束的path的延时值 */
-        vector<tuple<string, Input_info>> Input;
-        vector<Input_info> paths;   // 暂时用来记录查询到的input信息
-        bool flag = 0;              //跳过无效net
-        stringstream ss, sout, s_analyze;
+        auto &net = parser.nets[i];
 
-        for (auto &connection : net.connections)
-        {
-            if (connection.direction == spef::ConnectionDirection::OUTPUT)
-            {
-                out_name = connection.name;
-                int index = connection.name.rfind(':');                 // 找到‘:’的位置
-                int ID = stoi(connection.name.substr(1, index - 1));    // 提取出ID号 name格式参考 *1681713:Q
-                OUT_REAL_NAME = NormalizeName(parser.name_map[ID] + '/' + connection.name.substr(index + 1, -1));      // 拼接出真实名字, name_map： ID->real name(string)
+        // === 鲁棒性隔离：单个 Net 的失败不应导致进程崩溃 ===
+        try {
+            string out_name;            
+            string OUT_REAL_NAME;       
+            vector<tuple<string, Input_info>> Input;
+            vector<Input_info> paths;   
+            bool flag = 0;              
+            stringstream ss, sout, s_analyze;
 
-                if (netlist_info.find(OUT_REAL_NAME) == netlist_info.end())
-                    flag = 1;
-                else
-                    paths = netlist_info.find(OUT_REAL_NAME)->second;
-            }
-        }
-        
-        if(flag) continue; // 跳过这个net，继续下一个net
-        
-        for (auto &connection : net.connections)
-        {
-            if (connection.direction == spef::ConnectionDirection::INPUT)
+            // --- 第一遍扫描：处理 OUTPUT 引脚 ---
+            for (auto &connection : net.connections)
             {
-                // 将connection.name翻译为真实名，然后在info中寻找它的pincap
-                int index = connection.name.rfind(':');
-                int ID = stoi(connection.name.substr(1, index - 1));
-                string Input_Name = NormalizeName(parser.name_map[ID] + '/' + connection.name.substr(index + 1, -1));
-                
-                // Input中包含了这个net所有的path的延时、input pin的id以及real name，还有引脚电容
-                for (auto &p : paths)
+                if (connection.direction == spef::ConnectionDirection::OUTPUT)
                 {
-                    if (Input_Name == p.name)
+                    out_name = std::string(connection.name);
+                    
+                    // [Robust Check] 检查 rfind 是否找到了冒号
+                    size_t colon_pos = connection.name.rfind(':');
+                    if (colon_pos == std::string_view::npos || colon_pos < 2) {
+                        // 格式异常，跳过此连接或整个net
+                        flag = 1; break; 
+                    }
+                    
+                    int ID = 0;
+                    try {
+                        // 显式转为 string 后调用 stoi
+                        ID = std::stoi(std::string(connection.name.substr(1, colon_pos - 1)));
+                    } catch (...) {
+                        // ID 解析失败（非数字），标记跳过
+                        flag = 1; break;
+                    }
+                    
+                    // 字符串拼接：先转 string
+                    OUT_REAL_NAME = NormalizeName(
+                        std::string(parser.name_map[ID]) + 
+                        '/' + 
+                        std::string(connection.name.substr(colon_pos + 1))
+                    );      
+
+                    if (netlist_info.find(OUT_REAL_NAME) == netlist_info.end())
+                        flag = 1;
+                    else
+                        paths = netlist_info.find(OUT_REAL_NAME)->second;
+                }
+            }
+            
+            if(flag) continue; // 跳过无效 net
+            
+            // --- 第二遍扫描：处理 INPUT 引脚 ---
+            for (auto &connection : net.connections)
+            {
+                if (connection.direction == spef::ConnectionDirection::INPUT)
+                {
+                    // [Robust Check]
+                    size_t colon_pos = connection.name.rfind(':');
+                    if (colon_pos == std::string_view::npos || colon_pos < 2) continue;
+
+                    int ID = 0;
+                    try {
+                        ID = std::stoi(std::string(connection.name.substr(1, colon_pos - 1)));
+                    } catch (...) { continue; }
+                    
+                    string Input_Name = NormalizeName(
+                        std::string(parser.name_map[ID]) + 
+                        '/' + 
+                        std::string(connection.name.substr(colon_pos + 1))
+                    );
+                    
+                    for (auto &p : paths)
                     {
-                        Input.push_back(make_pair(connection.name, p));
+                        if (Input_Name == p.name)
+                        {
+                            // 显式转 string 存入 tuple
+                            Input.push_back(make_pair(std::string(connection.name), p));
+                        }
                     }
                 }
             }
-        }
-        
-        Topology topo = BuildTopologyFromRess(net, out_name, Input);
-        FillCapsFromNet(net, topo, out_name, Input);
+            
+            // 构建拓扑与计算延时
+            Topology topo = BuildTopologyFromRess(net, out_name, Input);
+            FillCapsFromNet(net, topo, out_name, Input);
 
-        // 单位设定：caps 为 fF、res 为 ohm，输出 ps。e3
-        // ohm * fF -> seconds: 1e-15；转成 ps 乘以 1e12 => 综合因子 1e-3。
-        double pin_load_unit_factor = 1e3;    // 若 Input.pin_cap 单位与 caps 不同，可在此调整为把其换算到 fF
-        double cap_ff_to_ps_factor = 1e-3;    // R(ohm)*C(fF) 转 ps 的系数
-        auto base_res = ComputeElmoreDelays_advanced(net, out_name, Input, topo, pin_load_unit_factor, cap_ff_to_ps_factor);
+            double pin_load_unit_factor = 1e3;    
+            double cap_ff_to_ps_factor = 1e-3;    
+            auto base_res = ComputeElmoreDelays_advanced(net, out_name, Input, topo, pin_load_unit_factor, cap_ff_to_ps_factor);
 
-        // Interface: choose whether to apply ML correction.
-        // - use_ml == false: output advanced Elmore (base_res)
-        // - use_ml == true : output ML-fixed delay (ml_res)
-        if (use_ml) {
-            auto ml_res = ML_fix(
-                out_name, Input, topo,
-                pin_load_unit_factor, cap_ff_to_ps_factor,
-                CFG_FEATURE_MODE,
-                CFG_SPLIT_MODE,
-                static_cast<FitMode>(CFG_FIT_MODE),
-                base_res
-            );
+            if (use_ml) {
+                auto ml_res = ML_fix(
+                    out_name, Input, topo,
+                    pin_load_unit_factor, cap_ff_to_ps_factor,
+                    CFG_FEATURE_MODE,
+                    CFG_SPLIT_MODE,
+                    static_cast<FitMode>(CFG_FIT_MODE),
+                    base_res
+                );
 
-            if (logging_enabled) {
-                write2log(ss, ml_res, Input, net, 4);
-            }
-            if (analyze_enabled) {
-                // write2csv expects vector<pair<string,double>>
-                std::vector<std::pair<std::string,double>> ml_pairs;
-                ml_pairs.reserve(ml_res.size());
-                for (const auto &t : ml_res) {
-                    ml_pairs.emplace_back(std::get<0>(t), std::get<1>(t));
+                if (logging_enabled) {
+                    write2log(ss, ml_res, Input, net, 4);
                 }
-                write2csv(s_analyze, ml_pairs, topo, Input, net, 4);
-            }
-            write_delay(sout, ml_res, Input, OUT_REAL_NAME, 4);
+                if (analyze_enabled) {
+                    std::vector<std::pair<std::string,double>> ml_pairs;
+                    ml_pairs.reserve(ml_res.size());
+                    for (const auto &t : ml_res) {
+                        ml_pairs.emplace_back(std::get<0>(t), std::get<1>(t));
+                    }
+                    write2csv(s_analyze, ml_pairs, topo, Input, net, 4);
+                }
+                write_delay(sout, ml_res, Input, OUT_REAL_NAME, 4);
 
-        } else {
-            if (logging_enabled) {
-                write2log(ss, base_res, Input, net, 4);
+            } else {
+                if (logging_enabled) {
+                    write2log(ss, base_res, Input, net, 4);
+                }
+                if (analyze_enabled) {
+                    write2csv(s_analyze, base_res, topo, Input, net, 4);
+                }
+                write_delay(sout, base_res, Input, OUT_REAL_NAME, 4);
             }
-            if (analyze_enabled) {
-                write2csv(s_analyze, base_res, topo, Input, net, 4);
+
+            // 安全写入线程本地缓冲
+            const int tid = omp_get_thread_num();
+            out_buf[tid] += sout.str();
+            if (analyze_enabled) analyze_buf[tid] += s_analyze.str();
+            if (logging_enabled) log_buf[tid] += ss.str();
+
+        } 
+        catch (const std::exception& e) {
+            // 捕获已知异常，记录但不中断
+            #pragma omp critical 
+            {
+                if (logging_enabled) {
+                    (*log) << "[WARN] Skipped Net due to error: " << net.name 
+                           << " | " << e.what() << endl;
+                } else {
+                    std::cerr << "[WARN] Skipped Net: " << net.name 
+                              << " | " << e.what() << endl;
+                }
             }
-            write_delay(sout, base_res, Input, OUT_REAL_NAME, 4);
         }
-
-        // 缓存到线程本地字符串，减少热点锁竞争
-        const int tid = omp_get_thread_num();
-        out_buf[tid] += sout.str();
-        if (analyze_enabled) analyze_buf[tid] += s_analyze.str();
-        if (logging_enabled) log_buf[tid] += ss.str();
-
-        // 导出后可以使用Gephi可视化RC树结构
-        // if(net.name == target_net_name){
-        //     ExportNetToGephiCsv(net, out_name, Input, topo, "rc_nodes.csv", "rc_edges.csv");
-        // }
-
+        catch (...) {
+            // 捕获未知异常
+            #pragma omp critical 
+            {
+                std::cerr << "[CRITICAL] Unknown error processing Net: " << net.name << endl;
+            }
+        }
     }
 
     auto t_compute_end = steady_clock::now();
@@ -373,9 +403,7 @@ int main(int argc, char **argv)
     auto compute_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_compute_end - t_compute_start).count();
     std::cout << "[TIME] compute phase: " << compute_ms << " ms" << std::endl;
 
-    /* 释放内存 */
-    if (file_path)
-    {
+    if (file_path) {
         free(file_path);
         file_path = nullptr;
     }
