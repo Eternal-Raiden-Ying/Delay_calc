@@ -223,7 +223,7 @@ int main(int argc, char **argv)
     int netlist_status = load_netlist_and_delay(file_path, spef_num);
     
     if (netlist_status != 0) {
-        std::cerr << "[ERROR] Failed to load netlist and delay files" << std::endl;
+        std::cerr << "[ERROR] Failed to load netlist files" << std::endl;
         exit(1);
     }
     

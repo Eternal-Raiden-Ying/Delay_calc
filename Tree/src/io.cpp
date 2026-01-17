@@ -20,12 +20,13 @@ int load_netlist_and_delay(const std::string &base_path, int spef_num)
         return 1;
     }
 
-    string delay_file = base_path + "/delay_data/Group" + to_string(spef_num) + ".txt";
-    if (Read_delay_file(delay_file))
-    {
-        cerr << "读取 delay 文件失败: " << delay_file << endl;
-        return 2;
-    }
+    // 本来不需要读取，避免未给出而意外报错
+    // string delay_file = base_path + "/delay_data/Group" + to_string(spef_num) + ".txt";
+    // if (Read_delay_file(delay_file))
+    // {
+    //     cerr << "读取 delay 文件失败: " << delay_file << endl;
+    //     return 2;
+    // }
     return 0;
 }
 
