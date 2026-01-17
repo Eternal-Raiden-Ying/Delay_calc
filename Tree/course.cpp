@@ -136,7 +136,7 @@ int main(int argc, char **argv)
         return 1;
     }
     // 放大输出缓冲，减少频繁写盘
-    std::vector<char> fout_buf(1 << 20); // 1MB
+    std::vector<char> fout_buf(128 << 10); // 128KB
     fout.rdbuf()->pubsetbuf(fout_buf.data(), static_cast<std::streamsize>(fout_buf.size()));
 
     std::ofstream log_file;
